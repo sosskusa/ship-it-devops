@@ -1,0 +1,41 @@
+services:
+
+  # ----- The database -----
+  db:
+    image: postgres:16-alpine          # official Postgres, pulled from Docker Hub
+    environment:
+      # Values come from your .env file. ":?" = stop with an error if missing.
+      POSTGRES_USER: ${POSTGRES_USER:-twotone}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-twotone}
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # keep data when the container is removed
+    healthcheck:
+      # "$$" so the container's own shell fills in the variables.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # NOTE: no "ports:" - the database is NOT exposed to your machine or the internet.
+
+  # ----- The app -----
+  app:
+    build: .                            # build the image from our Dockerfile
+    ports:
+      - "8000:8000"                     # host:container
+    environment:
+      # "db" is the hostname: containers find each other by service name.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-twotone}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-twotone}
+    depends_on:
+      db:
+        condition: service_healthy      # wait until Postgres is actually ready
+    healthcheck:
+      # Calls our own /health endpoint. Fails (non-zero exit) if it returns 503.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s                 # grace period while the app starts
+
+volumes:
+  pgdata:                               # declares the named volume used above
