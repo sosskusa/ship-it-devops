@@ -1,0 +1,50 @@
+name: CI
+
+# Run on every push and on pull requests.
+on:
+  push:
+  pull_request:
+
+# Give the job's automatic token read-only access (least privilege).
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest        # GitHub gives us a fresh Linux machine
+    steps:
+      # 1. Download our code onto the machine.
+      - uses: actions/checkout@v4
+
+      # 2. Install Python (and cache pip downloads to speed up later runs).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      # 3. Install dependencies (runtime + pytest).
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # 4. Run the tests. If any fail, the job stops here.
+      - name: Run tests
+        run: pytest -q
+
+      # 5. Build the Docker image (tagged with the commit ID).
+      - name: Build Docker image
+        run: docker build -t twotone-app:${{ github.sha }} .
+
+      # 6. Start app + Postgres and check /health. The password is generated
+      #    on the spot, so no secret is stored anywhere.
+      - name: Smoke test (app + PostgreSQL)
+        run: |
+          echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
+          docker compose up -d --build --wait
+          curl --fail http://localhost:8000/health
+          docker compose down -v
+
+      # 7. Only if something failed above: print the container logs.
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs
