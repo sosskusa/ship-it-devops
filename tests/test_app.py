@@ -5,7 +5,7 @@ def test_hello_returns_message():
     client = app.test_client()
     response = client.get("/")
     assert response.status_code == 200
-    assert response.get_json()["message"] == "Hello from Two Tone"
+    assert response.get_json()["message"] == "Hello from Nobody"
 
 
 def test_health_without_database():
